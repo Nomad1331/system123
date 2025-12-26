@@ -30,20 +30,62 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session)
+      setUser(session?.user ?? null)
+  
+      // Sync Discord ID on auth state change
+      if (session?.user) {
+        const discordId = session.user.user_metadata?.provider_id;
+    
+        if (discordId) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('discord_id')
+            .eq('user_id', session.user.id)
+            .single();
+      
+          if (profile && !profile.discord_id) {
+            await supabase
+              .from('profiles')
+              .update({ discord_id: discordId })
+              .eq('user_id', session.user.id);
+          }
+        }
       }
-    );
+    });
+
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
+        setSession(session)
+        setUser(session?.user ?? null)
+        setLoading(false)
+      
+        // If logged in with Discord, ensure discord_id is saved
+        if (session?.user) {
+          const discordId = session.user.user_metadata?.provider_id;
+          
+          if (discordId) {
+            // Check if discord_id needs updating
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('discord_id')
+              .eq('user_id', session.user.id)
+              .single();
+        
+            // Update if missing
+            if (profile && !profile.discord_id) {
+              await supabase
+                .from('profiles')
+                .update({ discord_id: discordId })
+                .eq('user_id', session.user.id);
+              
+              console.log('✅ Discord ID linked:', discordId);
+            }
+          }
+        }
+      });
 
     return () => subscription.unsubscribe();
   }, []);
