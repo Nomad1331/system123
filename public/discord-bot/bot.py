@@ -1357,7 +1357,7 @@ async def weekly_slash(interaction: discord.Interaction, page: int = 1):
         return
     await _call_cmd_with_interaction(interaction, 'weekly', page, defer=False)
 
-@bot.tree.command(name="stats", description="View your combined Discord + Web App stats")
+@bot.tree.command(name="stats", description="View your Hunter stats")
 async def stats_slash(interaction: discord.Interaction, member: discord.Member = None):
     if not await defer_interaction(interaction):
         return
@@ -1365,101 +1365,67 @@ async def stats_slash(interaction: discord.Interaction, member: discord.Member =
     member = member or interaction.user
     ctx = InteractionContext(interaction)
     
-    # Get Discord bot stats
-    user = db.get_user(member.id, interaction.guild.id)
-    if not user:
-        db.create_user(member.id, interaction.guild.id)
-        user = db.get_user(member.id, interaction.guild.id)
-    
-    discord_xp = user.get('xp', 0) if user else 0
-    discord_level = level_from_xp(discord_xp, interaction.guild.id) if user else 0
-    discord_rank = rank_from_level(discord_level)
-    server_rank = db.get_rank(member.id, interaction.guild.id) if user else 0
-    weekly_xp = db.get_user_weekly_xp(member.id, interaction.guild.id, days=7) if user else 0
-    messages = user.get('messages', 0) if user else 0
-    voice_time = user.get('voice_time', 0) if user else 0
-    
-    # Try to get web app stats
+    # Try to get web app stats (primary source)
     web_result = await db.get_web_stats(str(member.id))
     has_web_link = web_result.get("success", False)
     
+    if not has_web_link:
+        await ctx.send(
+            "❌ **Account Not Linked**\n"
+            "Your Discord is not linked to the web app.\n"
+            "👉 Log in at **sololeveling.app** with Discord to link your accounts!"
+        )
+        return
+    
+    # Web app stats (the single source of truth)
+    data = web_result.get("data", {})
+    profile = data.get("profile", {})
+    stats = data.get("stats", {})
+    
+    hunter_name = profile.get("hunter_name", member.display_name)
+    title = profile.get("title", "Awakened Hunter")
+    level = stats.get("level", 1)
+    total_xp = stats.get("total_xp", 0)
+    weekly_xp = stats.get("weekly_xp", 0)
+    rank = stats.get("rank", "E-Rank")
+    gold = stats.get("gold", 0)
+    gems = stats.get("gems", 0)
+    credits = stats.get("credits", 0)
+    strength = stats.get("strength", 10)
+    agility = stats.get("agility", 10)
+    intelligence = stats.get("intelligence", 10)
+    vitality = stats.get("vitality", 10)
+    sense = stats.get("sense", 10)
+    power = strength + agility + intelligence + vitality + sense
+    
     embed = discord.Embed(
-        title=f"📊 Stats - {member.display_name}",
+        title=f"📊 {hunter_name}",
+        description=f"*{title}*",
         color=0x00d4ff
     )
     
-    if has_web_link:
-        # Combined view with web app stats
-        data = web_result.get("data", {})
-        profile = data.get("profile", {})
-        stats = data.get("stats", {})
-        
-        hunter_name = profile.get("hunter_name", member.display_name)
-        title = profile.get("title", "Awakened Hunter")
-        web_level = stats.get("level", 1)
-        web_total_xp = stats.get("total_xp", 0)
-        web_weekly_xp = stats.get("weekly_xp", 0)
-        web_rank = stats.get("rank", "E-Rank")
-        gold = stats.get("gold", 0)
-        gems = stats.get("gems", 0)
-        credits = stats.get("credits", 0)
-        strength = stats.get("strength", 10)
-        agility = stats.get("agility", 10)
-        intelligence = stats.get("intelligence", 10)
-        vitality = stats.get("vitality", 10)
-        sense = stats.get("sense", 10)
-        power = strength + agility + intelligence + vitality + sense
-        
-        embed.title = f"📊 {hunter_name}"
-        embed.description = f"*{title}*"
-        
-        # Web App Progress
-        embed.add_field(
-            name="🌐 Web App",
-            value=f"**Level:** {web_level}\n**Rank:** {web_rank}\n**Total XP:** {web_total_xp:,}\n**Weekly XP:** {web_weekly_xp:,}",
-            inline=True
-        )
-        
-        # Discord Progress
-        embed.add_field(
-            name="💬 Discord",
-            value=f"**Level:** {discord_level}\n**Rank:** {discord_rank}\n**Server Rank:** #{server_rank}\n**Weekly XP:** {weekly_xp:,}",
-            inline=True
-        )
-        
-        # Power & Stats
-        embed.add_field(
-            name=f"⚔️ Power: {power}",
-            value=f"STR: {strength} | AGI: {agility}\nINT: {intelligence} | VIT: {vitality}\nSEN: {sense}",
-            inline=True
-        )
-        
-        # Activity
-        embed.add_field(
-            name="📈 Activity",
-            value=f"**Messages:** {messages:,}\n**Voice:** {voice_time:,}s",
-            inline=True
-        )
-        
-        # Currency
-        embed.add_field(
-            name="💰 Currency",
-            value=f"**Gold:** {gold:,}\n**Gems:** {gems:,}\n**Credits:** {credits:,}",
-            inline=True
-        )
-        
-        embed.set_footer(text="✅ Discord linked to Web App")
-    else:
-        # Discord-only view
-        embed.add_field(name="Rank", value=discord_rank, inline=True)
-        embed.add_field(name="Level", value=str(discord_level), inline=True)
-        embed.add_field(name="Server Rank", value=f"#{server_rank}", inline=True)
-        embed.add_field(name="Total XP", value=f"{discord_xp:,}", inline=True)
-        embed.add_field(name="This Week", value=f"{weekly_xp:,} XP", inline=True)
-        embed.add_field(name="Messages", value=str(messages), inline=True)
-        embed.add_field(name="Voice Time", value=f"{voice_time:,}s", inline=True)
-        
-        embed.set_footer(text="💡 Link your Discord at sololeveling.app for more stats!")
+    # Progress
+    embed.add_field(
+        name="📈 Progress",
+        value=f"**Level:** {level}\n**Rank:** {rank}\n**Total XP:** {total_xp:,}\n**Weekly XP:** {weekly_xp:,}",
+        inline=True
+    )
+    
+    # Power & Stats
+    embed.add_field(
+        name=f"⚔️ Power: {power}",
+        value=f"STR: {strength} | AGI: {agility}\nINT: {intelligence} | VIT: {vitality}\nSEN: {sense}",
+        inline=True
+    )
+    
+    # Currency
+    embed.add_field(
+        name="💰 Currency",
+        value=f"**Gold:** {gold:,}\n**Gems:** {gems:,}\n**Credits:** {credits:,}",
+        inline=True
+    )
+    
+    embed.set_footer(text="Solo Leveling System • sololeveling.app")
     
     await ctx.send(embed=embed)
 
@@ -1741,69 +1707,6 @@ async def halloffame_slash(interaction: discord.Interaction):
 # -------------------------
 # WEB APP SYNC COMMANDS
 # -------------------------
-@bot.tree.command(name="webstats", description="View your stats from the web app")
-async def webstats_slash(interaction: discord.Interaction):
-    if not await defer_interaction(interaction):
-        return
-    
-    ctx = InteractionContext(interaction)
-    
-    # Check if user is linked
-    result = await db.get_web_stats(str(interaction.user.id))
-    
-    if not result.get("success"):
-        error = result.get("error", "Unknown error")
-        if "not linked" in error.lower() or error == "User not linked":
-            await ctx.send(
-                "❌ **Not Linked**\n"
-                "Your Discord account is not linked to the web app.\n"
-                "Log in to the web app with Discord to link your accounts!"
-            )
-        elif "not configured" in error.lower():
-            await ctx.send("❌ Web sync is not configured for this bot.")
-        else:
-            await ctx.send(f"❌ Error fetching web stats: {error}")
-        return
-    
-    data = result.get("data", {})
-    profile = data.get("profile", {})
-    stats = data.get("stats", {})
-    
-    hunter_name = profile.get("hunter_name", "Unknown Hunter")
-    title = profile.get("title", "")
-    level = stats.get("level", 1)
-    total_xp = stats.get("total_xp", 0)
-    weekly_xp = stats.get("weekly_xp", 0)
-    rank = stats.get("rank", "E-Rank")
-    gold = stats.get("gold", 0)
-    gems = stats.get("gems", 0)
-    credits = stats.get("credits", 0)
-    
-    # Stat attributes
-    strength = stats.get("strength", 10)
-    agility = stats.get("agility", 10)
-    intelligence = stats.get("intelligence", 10)
-    vitality = stats.get("vitality", 10)
-    sense = stats.get("sense", 10)
-    
-    embed = discord.Embed(
-        title=f"🌐 {hunter_name}'s Web Stats",
-        description=f"*{title}*" if title else "Solo Leveling System Web App",
-        color=0x7c3aed
-    )
-    
-    embed.add_field(name="📊 Progress", value=f"**Level:** {level}\n**Rank:** {rank}\n**Total XP:** {total_xp:,}\n**Weekly XP:** {weekly_xp:,}", inline=True)
-    embed.add_field(name="💰 Currency", value=f"**Gold:** {gold:,}\n**Gems:** {gems:,}\n**Credits:** {credits:,}", inline=True)
-    embed.add_field(name="⚔️ Stats", value=f"**STR:** {strength} | **AGI:** {agility}\n**INT:** {intelligence} | **VIT:** {vitality}\n**SEN:** {sense}", inline=True)
-    
-    # Show unlocked classes if any
-    unlocked_classes = stats.get("unlocked_classes", [])
-    if unlocked_classes:
-        embed.add_field(name="🎭 Classes", value=", ".join(unlocked_classes), inline=False)
-    
-    embed.set_footer(text="Data synced from Solo Leveling System Web App")
-    await ctx.send(embed=embed)
-
 @bot.tree.command(name="weblink", description="Check if your Discord is linked to the web app")
 async def weblink_slash(interaction: discord.Interaction):
     if not await defer_interaction(interaction):
@@ -1829,7 +1732,7 @@ async def weblink_slash(interaction: discord.Interaction):
         await ctx.send(
             f"✅ **Account Linked!**\n"
             f"Your Discord is linked to web app account: **{hunter_name}**\n"
-            f"Use `/webstats` to view your full web app stats!"
+            f"Use `/stats` to view your stats!"
         )
     else:
         await ctx.send(
@@ -3727,7 +3630,7 @@ async def complete_slash(interaction: discord.Interaction, quest_number: int):
     embed.set_footer(text="Synced with web app!")
     await interaction.followup.send(embed=embed)
 
-@bot.tree.command(name="habits", description="View your active habits for today")
+@bot.tree.command(name="habits", description="View your active habits/goals for today")
 async def habits_slash(interaction: discord.Interaction):
     if not await defer_interaction(interaction):
         return
@@ -3747,44 +3650,55 @@ async def habits_slash(interaction: discord.Interaction):
         return
     
     habits = result.get('habits', [])
-    completed = result.get('completed_today', 0)
-    total = result.get('total', 0)
     
-    if not habits:
-        embed = discord.Embed(
-            title="🔄 YOUR HABITS",
-            description="No habits set up!\n\nVisit **sololeveling.app** to create habits.",
-            color=0x8b5cf6
-        )
+    # Filter to only show active habits (not completed today yet)
+    active_habits = [h for h in habits if not h.get('completed_today')]
+    completed_today = len(habits) - len(active_habits)
+    
+    if not active_habits:
+        if completed_today > 0:
+            embed = discord.Embed(
+                title="🔄 YOUR HABITS",
+                description=f"🎉 All **{completed_today}** habits completed for today!",
+                color=0x22c55e
+            )
+        else:
+            embed = discord.Embed(
+                title="🔄 YOUR HABITS",
+                description="No active habits!\n\nVisit **sololeveling.app** to create habits.",
+                color=0x8b5cf6
+            )
         await interaction.followup.send(embed=embed)
         return
     
     embed = discord.Embed(
         title="🔄 YOUR HABITS",
-        description=f"Progress: **{completed}/{total}** completed today",
+        description=f"**{len(active_habits)}** habits remaining today",
         color=0x8b5cf6
     )
     
-    for habit in habits:
-        status = "✅" if habit.get('completed_today') else "⬜"
+    for i, habit in enumerate(active_habits):
         name = habit.get('name', 'Unnamed Habit')
         xp = habit.get('xp', 15)
-        habit_id = habit.get('id', '')[:8]
         embed.add_field(
-            name=f"{status} {name}",
-            value=f"🔮 {xp} XP • ID: `{habit_id}`",
+            name=f"**#{i + 1}** - {name}",
+            value=f"🔮 {xp} XP",
             inline=False
         )
     
-    embed.set_footer(text="Use /habitmark <habit_id> to mark a habit complete")
+    embed.set_footer(text="Use /habitmark <number> to complete a habit")
     await interaction.followup.send(embed=embed)
 
-@bot.tree.command(name="habitmark", description="Mark a habit as complete for today")
-async def habitmark_slash(interaction: discord.Interaction, habit_id: str):
+@bot.tree.command(name="habitmark", description="Complete a habit by number from /habits")
+async def habitmark_slash(interaction: discord.Interaction, habit_number: int):
     if not await defer_interaction(interaction):
         return
     
-    result = await db.complete_web_habit(str(interaction.user.id), habit_id)
+    if habit_number < 1:
+        await interaction.followup.send("❌ Habit number must be 1 or higher!")
+        return
+    
+    result = await db.complete_web_habit_by_index(str(interaction.user.id), habit_number - 1)
     
     if not result.get('success'):
         error = result.get('error', 'Unknown error')

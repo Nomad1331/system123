@@ -2,6 +2,34 @@
 
 All notable changes to the Solo Leveling System will be documented in this file.
 
+## [3.11.2] - 2025-01-07
+
+### Changed
+- **Unified /stats Command**: `/stats` now shows only web app stats as the single source of truth
+  - Removed duplicate Discord vs Web App stats display
+  - Web app is the primary data source for all player statistics
+  - Unlinked users prompted to link at sololeveling.app
+  - Removed `/webstats` command (merged into `/stats`)
+
+### Fixed
+- **Habits Command**: `/habits` now correctly shows only active habits/goals
+  - Filters out completed and failed goals
+  - Only shows habits that haven't been completed today
+  - Fixed "Habit not found" error when using `/habitmark`
+  - Shows numbered list for easier completion
+
+### Improved  
+- **Habit Completion by Number**: `/habitmark` now accepts a number instead of ID
+  - Use `/habitmark 1` instead of `/habitmark 17656277`
+  - Matches the numbered list shown in `/habits`
+  - Much easier to use on mobile
+
+### Technical
+- Edge function `get_habits` now filters habits by `status === 'active'`
+- Edge function `complete_habit` supports both `habit_id` and `habit_index` parameters
+- Added `complete_web_habit_by_index()` method to database.py
+- Removed `/webstats` slash command (functionality merged into `/stats`)
+
 ## [3.11.1] - 2025-01-07
 
 ### Fixed
