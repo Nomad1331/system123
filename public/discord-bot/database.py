@@ -1160,7 +1160,7 @@ class Database:
             return {"success": False, "error": str(e)}
     
     async def complete_web_habit(self, discord_id: str, habit_id: str):
-        """Complete a habit via web app."""
+        """Complete a habit via web app by ID."""
         import config as bot_config
         
         if not bot_config.BOT_SYNC_SECRET or not bot_config.SUPABASE_SERVICE_ROLE_KEY:
@@ -1187,6 +1187,36 @@ class Database:
                     return await response.json()
         except Exception as e:
             print(f"❌ Complete habit error: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def complete_web_habit_by_index(self, discord_id: str, habit_index: int):
+        """Complete a habit via web app by index (0-based)."""
+        import config as bot_config
+        
+        if not bot_config.BOT_SYNC_SECRET or not bot_config.SUPABASE_SERVICE_ROLE_KEY:
+            return {"success": False, "error": "Web sync not configured"}
+        
+        url = f"{bot_config.SUPABASE_URL}/functions/v1/bot-sync"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    json={
+                        "discord_id": str(discord_id),
+                        "action": "complete_habit",
+                        "data": {"habit_index": habit_index}
+                    },
+                    headers={
+                        "Authorization": f"Bearer {bot_config.SUPABASE_SERVICE_ROLE_KEY}",
+                        "X-Bot-Secret": bot_config.BOT_SYNC_SECRET,
+                        "Content-Type": "application/json"
+                    },
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    return await response.json()
+        except Exception as e:
+            print(f"❌ Complete habit by index error: {e}")
             return {"success": False, "error": str(e)}
     
     async def get_web_streak(self, discord_id: str):
